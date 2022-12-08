@@ -47,26 +47,23 @@ impl Command for ToParquet {
         input: PipelineData,
     ) -> Result<nu_protocol::PipelineData, ShellError> {
         let head = call.head;
-        let noheaders = call.has_flag("noheaders");
         let file: Option<Spanned<PathBuf>> = call.get_flag(engine_state, stack, "file")?;
         let config = engine_state.get_config();
-        to_parquet(input, noheaders, file, head, config)
+        to_parquet(input, file, head, config)
     }
 }
 
 fn to_parquet(
     input: PipelineData,
-    noheaders: bool,
     file: Option<Spanned<PathBuf>>,
     head: Span,
     config: &Config,
 ) -> Result<PipelineData, ShellError> {
     let sep: char = ',';
-    to_delimited_data_for_parquet(noheaders, sep, file, "CSV", input, head, config)
+    to_delimited_data_for_parquet(sep, file, "CSV", input, head, config)
 }
 
 pub fn to_delimited_data_for_parquet(
-    noheaders: bool,
     sep: char,
     file: Option<Spanned<PathBuf>>,
     format_name: &'static str,
@@ -76,15 +73,7 @@ pub fn to_delimited_data_for_parquet(
 ) -> Result<PipelineData, ShellError> {
     let value = input.into_value(span);
     let output = match from_value_to_delimited_string(&value, sep, config, span) {
-        Ok(mut x) => {
-            if noheaders {
-                if let Some(second_line) = x.find('\n') {
-                    let start = second_line + 1;
-                    x.replace_range(0..start, "");
-                }
-            }
-            Ok(x)
-        }
+        Ok(x) => Ok(x),
         Err(_) => Err(ShellError::CantConvert(
             format_name.into(),
             value.get_type().to_string(),
