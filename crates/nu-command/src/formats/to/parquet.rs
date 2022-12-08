@@ -1,7 +1,9 @@
+use nu_engine::CallExt;
 use nu_protocol::ast::Call;
 use nu_protocol::engine::{Command, EngineState, Stack};
 use nu_protocol::{
-    Category, Config, IntoPipelineData, PipelineData, ShellError, Signature, Span, Type, Value,
+    Category, Config, IntoPipelineData, PipelineData, ShellError, Signature, Span, Spanned,
+    SyntaxShape, Type, Value,
 };
 
 use csv::WriterBuilder;
@@ -10,8 +12,8 @@ use std::collections::VecDeque;
 
 use arrow::csv::ReaderBuilder;
 use parquet::{arrow::ArrowWriter, errors::ParquetError};
-use std::fs::File;
 use std::sync::Arc;
+use std::{fs::File, path::PathBuf};
 
 #[derive(Clone)]
 pub struct ToParquet;
@@ -23,6 +25,12 @@ impl Command for ToParquet {
 
     fn signature(&self) -> Signature {
         Signature::build("to parquet")
+            .named(
+                "file",
+                SyntaxShape::Filepath,
+                "file path to save parquet file",
+                Some('f'),
+            )
             .input_output_types(vec![(Type::Any, Type::String)])
             .category(Category::Formats)
     }
@@ -34,30 +42,33 @@ impl Command for ToParquet {
     fn run(
         &self,
         engine_state: &EngineState,
-        _stack: &mut Stack,
+        stack: &mut Stack,
         call: &Call,
         input: PipelineData,
     ) -> Result<nu_protocol::PipelineData, ShellError> {
         let head = call.head;
         let noheaders = call.has_flag("noheaders");
+        let file: Option<Spanned<PathBuf>> = call.get_flag(engine_state, stack, "file")?;
         let config = engine_state.get_config();
-        to_parquet(input, noheaders, head, config)
+        to_parquet(input, noheaders, file, head, config)
     }
 }
 
 fn to_parquet(
     input: PipelineData,
     noheaders: bool,
+    file: Option<Spanned<PathBuf>>,
     head: Span,
     config: &Config,
 ) -> Result<PipelineData, ShellError> {
     let sep: char = ',';
-    to_delimited_data_for_parquet(noheaders, sep, "CSV", input, head, config)
+    to_delimited_data_for_parquet(noheaders, sep, file, "CSV", input, head, config)
 }
 
 pub fn to_delimited_data_for_parquet(
     noheaders: bool,
     sep: char,
+    file: Option<Spanned<PathBuf>>,
     format_name: &'static str,
     input: PipelineData,
     span: Span,
@@ -82,7 +93,7 @@ pub fn to_delimited_data_for_parquet(
         )),
     }?;
 
-    let _why = parquet_file_writer(&output);
+    let _why = parquet_file_writer(&output, file);
 
     // This works and returns nothing...
     // Ok(Value::Nothing { span: span }.into_pipeline_data())
@@ -92,7 +103,7 @@ pub fn to_delimited_data_for_parquet(
     Ok(Value::string("Saved parquet file", span).into_pipeline_data())
 }
 
-pub fn parquet_file_writer(csv: &str) -> Result<(), ParquetError> {
+pub fn parquet_file_writer(csv: &str, file: Option<Spanned<PathBuf>>) -> Result<(), ParquetError> {
     let data = csv.as_bytes();
     let mut cursor = std::io::Cursor::new(data);
 
@@ -116,7 +127,15 @@ pub fn parquet_file_writer(csv: &str) -> Result<(), ParquetError> {
 
     let reader = builder.build(cursor)?;
 
-    let output = File::create("foo.parquet")?;
+    let output;
+    match file {
+        Some(file) => {
+            output = File::create(&file.item)?;
+        }
+        None => {
+            output = File::create("foo.parquet")?;
+        }
+    }
 
     let mut writer = ArrowWriter::try_new(output, reader.schema(), None)?;
 
