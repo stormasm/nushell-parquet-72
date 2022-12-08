@@ -59,12 +59,11 @@ fn to_parquet(
     head: Span,
     config: &Config,
 ) -> Result<PipelineData, ShellError> {
-    to_delimited_data_for_parquet(file, "CSV", input, head, config)
+    to_delimited_data_for_parquet(file, input, head, config)
 }
 
 pub fn to_delimited_data_for_parquet(
     file: Option<Spanned<PathBuf>>,
-    format_name: &'static str,
     input: PipelineData,
     span: Span,
     config: &Config,
@@ -73,20 +72,14 @@ pub fn to_delimited_data_for_parquet(
     let output = match from_value_to_delimited_string(&value, config, span) {
         Ok(x) => Ok(x),
         Err(_) => Err(ShellError::CantConvert(
-            format_name.into(),
+            "CSV".into(),
             value.get_type().to_string(),
             value.span().unwrap_or(span),
             None,
         )),
     }?;
 
-    let _why = parquet_file_writer(&output, file);
-
-    // This works and returns nothing...
-    // Ok(Value::Nothing { span: span }.into_pipeline_data())
-
-    // This was the original way it worked
-    // Ok(Value::string(output, span).into_pipeline_data())
+    let _ = parquet_file_writer(&output, file);
     Ok(Value::string("Saved parquet file", span).into_pipeline_data())
 }
 
