@@ -2,8 +2,8 @@ use nu_engine::CallExt;
 use nu_protocol::ast::Call;
 use nu_protocol::engine::{Command, EngineState, Stack};
 use nu_protocol::{
-    Category, Config, IntoPipelineData, PipelineData, ShellError, Signature, Span, Spanned,
-    SyntaxShape, Type, Value,
+    Category, Config, Example, IntoPipelineData, PipelineData, ShellError, Signature, Span,
+    Spanned, SyntaxShape, Type, Value,
 };
 
 use csv::WriterBuilder;
@@ -37,6 +37,21 @@ impl Command for ToParquet {
 
     fn usage(&self) -> &str {
         "Convert table into a parquet file "
+    }
+
+    fn examples(&self) -> Vec<Example> {
+        vec![
+            Example {
+                description: "Outputs parquet file representing the contents of this table to a default file name foo.parquet",
+                example: "[[foo bar]; [1 2]] | to parquet",
+                result: None,
+            },
+            Example {
+                description: "Outputs parquet file representing the contents of this table to the passed in file name",
+                example: "[[foo bar]; [1 2]] | to parquet -f nu.parquet ",
+                result: None,
+            },
+        ]
     }
 
     fn run(
