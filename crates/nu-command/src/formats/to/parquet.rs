@@ -1,13 +1,11 @@
 use nu_protocol::ast::Call;
 use nu_protocol::engine::{Command, EngineState, Stack};
 use nu_protocol::{
-    Category, Config, Example, IntoPipelineData, PipelineData, ShellError, Signature, Span, Type,
-    Value,
+    Category, Config, IntoPipelineData, PipelineData, ShellError, Signature, Span, Type, Value,
 };
 
 use csv::WriterBuilder;
 use indexmap::{indexset, IndexSet};
-//use nu_protocol::{IntoPipelineData, PipelineData, ShellError, Span, Value};
 use std::collections::VecDeque;
 
 use arrow::csv::ReaderBuilder;
@@ -32,21 +30,6 @@ impl Command for ToParquet {
                 Some('n'),
             )
             .category(Category::Formats)
-    }
-
-    fn examples(&self) -> Vec<Example> {
-        vec![
-            Example {
-                description: "Outputs an CSV string representing the contents of this table",
-                example: "[[foo bar]; [1 2]] | to csv",
-                result: Some(Value::test_string("foo,bar\n1,2\n")),
-            },
-            Example {
-                description: "Outputs an CSV string representing the contents of this table",
-                example: "[[foo bar]; [1 2]] | to csv -s ';' ",
-                result: Some(Value::test_string("foo;bar\n1;2\n")),
-            },
-        ]
     }
 
     fn usage(&self) -> &str {
@@ -75,6 +58,84 @@ fn to_parquet(
 ) -> Result<PipelineData, ShellError> {
     let sep: char = ',';
     to_delimited_data_for_parquet(noheaders, sep, "CSV", input, head, config)
+}
+
+pub fn to_delimited_data_for_parquet(
+    noheaders: bool,
+    sep: char,
+    format_name: &'static str,
+    input: PipelineData,
+    span: Span,
+    config: &Config,
+) -> Result<PipelineData, ShellError> {
+    let value = input.into_value(span);
+    let output = match from_value_to_delimited_string(&value, sep, config, span) {
+        Ok(mut x) => {
+            if noheaders {
+                if let Some(second_line) = x.find('\n') {
+                    let start = second_line + 1;
+                    x.replace_range(0..start, "");
+                }
+            }
+            Ok(x)
+        }
+        Err(_) => Err(ShellError::CantConvert(
+            format_name.into(),
+            value.get_type().to_string(),
+            value.span().unwrap_or(span),
+            None,
+        )),
+    }?;
+
+    let _why = parquet_file_writer(&output);
+
+    // This works and returns nothing...
+    // Ok(Value::Nothing { span: span }.into_pipeline_data())
+
+    // This was the original way it worked
+    // Ok(Value::string(output, span).into_pipeline_data())
+    Ok(Value::string("Saved parquet file", span).into_pipeline_data())
+}
+
+pub fn parquet_file_writer(csv: &str) -> Result<(), ParquetError> {
+    let data = csv.as_bytes();
+    let mut cursor = std::io::Cursor::new(data);
+
+    let delimiter: char = ',';
+
+    let schema =
+        match arrow::csv::reader::infer_file_schema(&mut cursor, delimiter as u8, None, true) {
+            Ok((schema, _inferred_has_header)) => Ok(schema),
+            Err(error) => Err(ParquetError::General(format!(
+                "Error inferring schema: {}",
+                error
+            ))),
+        }?;
+
+    let schema_ref = Arc::new(schema);
+
+    let builder = ReaderBuilder::new()
+        .has_header(true)
+        .with_delimiter(delimiter as u8)
+        .with_schema(schema_ref);
+
+    let reader = builder.build(cursor)?;
+
+    let output = File::create("foo.parquet")?;
+
+    let mut writer = ArrowWriter::try_new(output, reader.schema(), None)?;
+
+    for batch in reader {
+        match batch {
+            Ok(batch) => writer.write(&batch)?,
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    match writer.close() {
+        Ok(_) => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 fn from_value_to_delimited_string(
@@ -175,7 +236,7 @@ fn to_string_tagged_value(v: &Value, config: &Config, span: Span) -> Result<Stri
     }
 }
 
-pub fn merge_descriptors(values: &[Value]) -> Vec<String> {
+fn merge_descriptors(values: &[Value]) -> Vec<String> {
     let mut ret: Vec<String> = vec![];
     let mut seen: IndexSet<String> = indexset! {};
     for value in values {
@@ -191,94 +252,4 @@ pub fn merge_descriptors(values: &[Value]) -> Vec<String> {
         }
     }
     ret
-}
-
-pub fn to_delimited_data_for_parquet(
-    noheaders: bool,
-    sep: char,
-    format_name: &'static str,
-    input: PipelineData,
-    span: Span,
-    config: &Config,
-) -> Result<PipelineData, ShellError> {
-    let value = input.into_value(span);
-    let output = match from_value_to_delimited_string(&value, sep, config, span) {
-        Ok(mut x) => {
-            if noheaders {
-                if let Some(second_line) = x.find('\n') {
-                    let start = second_line + 1;
-                    x.replace_range(0..start, "");
-                }
-            }
-            Ok(x)
-        }
-        Err(_) => Err(ShellError::CantConvert(
-            format_name.into(),
-            value.get_type().to_string(),
-            value.span().unwrap_or(span),
-            None,
-        )),
-    }?;
-
-    let _why = parquet_file_writer(&output);
-
-    // This works and returns nothing...
-    // Ok(Value::Nothing { span: span }.into_pipeline_data())
-
-    // This was the original way it worked
-    // Ok(Value::string(output, span).into_pipeline_data())
-    Ok(Value::string("Saved parquet file", span).into_pipeline_data())
-}
-
-pub fn parquet_file_writer(csv: &str) -> Result<(), ParquetError> {
-    let data = csv.as_bytes();
-    let mut cursor = std::io::Cursor::new(data);
-
-    let delimiter: char = ',';
-
-    let schema =
-        match arrow::csv::reader::infer_file_schema(&mut cursor, delimiter as u8, None, true) {
-            Ok((schema, _inferred_has_header)) => Ok(schema),
-            Err(error) => Err(ParquetError::General(format!(
-                "Error inferring schema: {}",
-                error
-            ))),
-        }?;
-
-    let schema_ref = Arc::new(schema);
-
-    let builder = ReaderBuilder::new()
-        .has_header(true)
-        .with_delimiter(delimiter as u8)
-        .with_schema(schema_ref);
-
-    let reader = builder.build(cursor)?;
-
-    let output = File::create("foo.parquet")?;
-
-    let mut writer = ArrowWriter::try_new(output, reader.schema(), None)?;
-
-    for batch in reader {
-        match batch {
-            Ok(batch) => writer.write(&batch)?,
-            Err(error) => return Err(error.into()),
-        }
-    }
-
-    match writer.close() {
-        Ok(_) => Ok(()),
-        Err(error) => Err(error),
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_examples() {
-        use crate::test_examples;
-
-        test_examples(ToParquet {})
-    }
 }
