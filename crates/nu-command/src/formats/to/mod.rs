@@ -5,6 +5,7 @@ mod html;
 mod json;
 mod md;
 mod nuon;
+mod parquet;
 mod text;
 mod toml;
 mod tsv;
@@ -13,6 +14,7 @@ mod xml;
 mod yaml;
 
 pub use self::csv::ToCsv;
+pub use self::parquet::ToParquet;
 pub use self::toml::ToToml;
 pub use self::url::ToUrl;
 pub use command::To;
