@@ -1,4 +1,20 @@
 
+### Output your nushell data to parquet files
+
+You can pass in an optional file name in which to save the parquet file.   
+
+Or use the default file name foo.parquet for testing purposes.
+
+```rust
+[[foo bar]; [1 2]] | to parquet
+[[foo bar]; [1 3]] | to parquet -f myfile.parquet
+
+ls | to parquet
+sys | to parquet
+```
+
+### The Details
+
 This is [nushell-0.72.0](https://github.com/nushell/nushell/releases/tag/0.72.0) with a swapped out nu-command...
 
 So we start out with the file nushell-0.72.0.tar.gz
