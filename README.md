@@ -1,5 +1,5 @@
 
-This is nushell-0.72.0 with a swapped out nu-command...
+This is [nushell-0.72.0](https://github.com/nushell/nushell/releases/tag/0.72.0) with a swapped out nu-command...
 
 So we start out with the file nushell-0.72.0.tar.gz
 
