@@ -59,12 +59,10 @@ fn to_parquet(
     head: Span,
     config: &Config,
 ) -> Result<PipelineData, ShellError> {
-    let sep: char = ',';
-    to_delimited_data_for_parquet(sep, file, "CSV", input, head, config)
+    to_delimited_data_for_parquet(file, "CSV", input, head, config)
 }
 
 pub fn to_delimited_data_for_parquet(
-    sep: char,
     file: Option<Spanned<PathBuf>>,
     format_name: &'static str,
     input: PipelineData,
@@ -72,7 +70,7 @@ pub fn to_delimited_data_for_parquet(
     config: &Config,
 ) -> Result<PipelineData, ShellError> {
     let value = input.into_value(span);
-    let output = match from_value_to_delimited_string(&value, sep, config, span) {
+    let output = match from_value_to_delimited_string(&value, config, span) {
         Ok(x) => Ok(x),
         Err(_) => Err(ShellError::CantConvert(
             format_name.into(),
@@ -143,10 +141,10 @@ pub fn parquet_file_writer(csv: &str, file: Option<Spanned<PathBuf>>) -> Result<
 
 fn from_value_to_delimited_string(
     value: &Value,
-    separator: char,
     config: &Config,
     head: Span,
 ) -> Result<String, ShellError> {
+    let separator: char = ',';
     match value {
         Value::Record { cols, vals, span } => {
             let mut wtr = WriterBuilder::new()
