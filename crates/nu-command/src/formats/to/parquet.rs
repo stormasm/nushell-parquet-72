@@ -24,11 +24,6 @@ impl Command for ToParquet {
     fn signature(&self) -> Signature {
         Signature::build("to parquet")
             .input_output_types(vec![(Type::Any, Type::String)])
-            .switch(
-                "noheaders",
-                "do not output the columns names as the first row",
-                Some('n'),
-            )
             .category(Category::Formats)
     }
 
